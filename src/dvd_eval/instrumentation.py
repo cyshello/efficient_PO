@@ -29,7 +29,7 @@ import re
 import time
 from typing import Any
 
-from surrogate_rollout import config
+from dvd_eval import config
 
 
 class RunRecorder:

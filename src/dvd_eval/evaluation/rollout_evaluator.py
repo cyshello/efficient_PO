@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Protocol
 
-from surrogate_rollout.schemas import DVDRunResult
+from dvd_eval.schemas import DVDRunResult
 
 # fallback_type values (PHASE2_3 §11) — recorded, never silent.
 FALLBACK_NONE = "none"

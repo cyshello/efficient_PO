@@ -19,7 +19,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Callable
 
-from surrogate_rollout.cache.caption_cache import assert_writable, captions_content_hash
+from dvd_eval.cache.caption_cache import assert_writable, captions_content_hash
 
 
 def default_merge_fn(partial_registries: list) -> dict | list | None:

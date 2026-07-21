@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import re
 
-from surrogate_rollout.schemas import ReferenceSets
+from dvd_eval.schemas import ReferenceSets
 
 _HHMMSS = re.compile(r"\b(\d{1,2}):(\d{2}):(\d{2})\b")
 

@@ -16,8 +16,8 @@ import sys
 import time
 from dataclasses import dataclass, field
 
-from surrogate_rollout import config
-from surrogate_rollout.cache.caption_cache import (
+from dvd_eval import config
+from dvd_eval.cache.caption_cache import (
     assert_writable,
     build_cache_key,
     key_as_dict,
@@ -77,7 +77,7 @@ def build_clip_index(sample: dict, video_id: str) -> list[tuple[str, dict]]:
     from dvd.frame_caption import parse_srt_to_dict
     from dvd_captioning import _build_clips, _sorted_frames, video_duration_seconds
 
-    from surrogate_rollout.evaluation.dvd_qa import resolve_frames_dir
+    from dvd_eval.evaluation.dvd_qa import resolve_frames_dir
 
     frames_dir = resolve_frames_dir(sample, video_id)
     duration = video_duration_seconds(sample["video_path"])

@@ -13,20 +13,20 @@ from __future__ import annotations
 import os
 import time
 
-from surrogate_rollout import config
-from surrogate_rollout.captioning.candidate_captions import (
+from dvd_eval import config
+from dvd_eval.captioning.candidate_captions import (
     CandidatePromptError,
     caption_clips,
     validate_candidate_prompt,
 )
-from surrogate_rollout.cache.caption_cache import prompt_hash as compute_prompt_hash
-from surrogate_rollout.evaluation.dvd_qa import prepare_video_workdir, run_dvd_qa
-from surrogate_rollout.evaluation.rollout_evaluator import (
+from dvd_eval.cache.caption_cache import prompt_hash as compute_prompt_hash
+from dvd_eval.evaluation.dvd_qa import prepare_video_workdir, run_dvd_qa
+from dvd_eval.evaluation.rollout_evaluator import (
     FALLBACK_NONE,
     EvaluationRequest,
     EvaluationResult,
 )
-from surrogate_rollout.mixed_views.builder import (
+from dvd_eval.mixed_views.builder import (
     caption_entry_from_parsed,
     default_merge_fn,
     write_captions_json,
@@ -96,7 +96,7 @@ class FullRolloutEvaluator:
 
         prepare_video_workdir(request.work_root, request.video_id, request.sample)
         captions_path, cap_set = self.build_full_view(request)
-        from surrogate_rollout.cache.caption_cache import captions_content_hash
+        from dvd_eval.cache.caption_cache import captions_content_hash
 
         chash = captions_content_hash(captions_path)
 

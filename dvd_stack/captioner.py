@@ -1,7 +1,7 @@
 """Captioner — component 2.
 
 Reuses the captioning package at
-/home/intern/youngseo/surrogate_rollout/captioning as-is (no copy). The
+dvd_eval/captioning as-is (no copy). The
 captioner is Qwen2.5-VL-7B-Instruct served by vLLM.
 
 Must run in the `local_llm_vllm` conda env (vLLM + transformers + qwen_vl_utils
@@ -16,14 +16,14 @@ import sys
 from glob import glob
 
 # Append (not insert-0) so this project's own modules win over same-named
-# packages under surrogate_rollout/.
+# packages under dvd_eval/.
 # Portable: the dir that CONTAINS the `captioning` package. In dvd_evaluator
-# this is <repo>/src/surrogate_rollout; override with SR_CAPTIONING_PARENT.
-# Default resolves relative to this file (dvd_stack/ -> ../src/surrogate_rollout).
+# this is <rep../src/dvd_eval; override with SR_CAPTIONING_PARENT.
+# Default resolves relative to this file (dvd_stack/ -> ../src/dvd_eval).
 _CAPTIONING_PARENT = os.environ.get(
     "SR_CAPTIONING_PARENT",
     os.path.abspath(os.path.join(
-        os.path.dirname(__file__), "..", "src", "surrogate_rollout")))
+        os.path.dirname(__file__), "..", "src", "dvd_eval")))
 if _CAPTIONING_PARENT not in sys.path:
     sys.path.append(_CAPTIONING_PARENT)
 

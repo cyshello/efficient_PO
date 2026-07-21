@@ -187,6 +187,6 @@ DEFAULT_TRACE_POLICY_PHASE2 = "returned_and_frame_inspection"
 
 
 def decoding_hash() -> str:
-    from surrogate_rollout.schemas import sha256_json
+    from dvd_eval.schemas import sha256_json
 
     return sha256_json(CAPTION_DECODING)

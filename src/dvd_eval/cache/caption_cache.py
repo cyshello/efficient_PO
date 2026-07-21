@@ -24,8 +24,8 @@ import os
 from dataclasses import asdict
 from datetime import datetime
 
-from surrogate_rollout import config
-from surrogate_rollout.schemas import CaptionCacheKey, sha256_json, sha256_text
+from dvd_eval import config
+from dvd_eval.schemas import CaptionCacheKey, sha256_json, sha256_text
 
 
 def prompt_hash(caption_prompt: str, merge_prompt: str) -> str:

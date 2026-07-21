@@ -23,10 +23,10 @@ import threading
 import time
 from contextlib import contextmanager
 
-from surrogate_rollout import config
-from surrogate_rollout.cache.caption_cache import captions_content_hash
-from surrogate_rollout.evaluation.qa_metrics import score_mcq
-from surrogate_rollout.schemas import DVDRunResult, ReferenceSets
+from dvd_eval import config
+from dvd_eval.cache.caption_cache import captions_content_hash
+from dvd_eval.evaluation.qa_metrics import score_mcq
+from dvd_eval.schemas import DVDRunResult, ReferenceSets
 
 for _p in (config.PROMPT_SENS_ROOT, config.DVD_ROOT):
     if _p not in sys.path:
@@ -256,8 +256,8 @@ def run_dvd_qa(
     from dvd.utils import extract_answer
     from dvd_prompt import reset_prompts
 
-    from surrogate_rollout import instrumentation
-    from surrogate_rollout.references.extractor import extract_references
+    from dvd_eval import instrumentation
+    from dvd_eval.references.extractor import extract_references
 
     os.makedirs(run_dir, exist_ok=True)
     video_id = sample.get("extra", {}).get("videoID") or sample["sample_id"]
