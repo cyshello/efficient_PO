@@ -58,7 +58,8 @@ PREVIOUSLY_CACHED_VIDEOS = (
 ) if BENCHMARK == "videomme" else ()
 
 # ------------------------------ models ------------------------------------ #
-CAPTION_MODEL_ID = "Qwen/Qwen2.5-VL-7B-Instruct"
+CAPTION_MODEL_ID = os.environ.get(
+    "SR_CAPTION_MODEL_ID", "Qwen/Qwen2.5-VL-7B-Instruct")
 ORCHESTRATOR_TOOL_MODEL = "gpt-4o-mini"
 TEXT_FALLBACK_MODEL = "gpt-5.5"  # codex CLI
 FEEDBACK_MODEL = os.environ.get("SR_FEEDBACK_MODEL", "gpt-4o")
