@@ -11,3 +11,9 @@ export SR_BENCHMARK="${SR_BENCHMARK:-lvbench}"
 export SR_BENCHMARK_SPLIT="${SR_BENCHMARK_SPLIT:-test}"
 # export SR_SPLIT_MANIFEST_PATH=/path/to/split_manifest_lvbench.json
 # export SR_CAPTION_CACHE_ROOT=/path/to/caption_cache
+# Benchmark data root. Providers look for $DATA_ROOT/<benchmark>_data (e.g.
+# $DATA_ROOT/lvbench_data/LVBench/{video_info.meta.jsonl,videos/}); without it
+# they fall back to this host's default (/hub_data3/lvbench_data).
+# export DATA_ROOT=/path/to/benchmark/data
+# Override the bundled dvd_stack/providers copy (only where longVideoPO exists):
+# export SR_PROVIDERS_PARENT=/home/intern/youngseo/longVideoPO
