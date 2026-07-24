@@ -216,64 +216,73 @@ def _wrap_frame_inspect(tool, recorder: RunRecorder):
     return wrapped
 
 
-def _wrap_router_factory(make_router, recorder: RunRecorder):
-    @functools.wraps(make_router)
-    def factory(*fargs, **fkwargs):
-        router = make_router(*fargs, **fkwargs)
+def _wrap_bound_router(router, recorder: RunRecorder):
+    """Wrap an already-bound call_openai_model_with_tools router.
 
-        @functools.wraps(router)
-        def recording_router(messages, endpoints, model_name, api_key=None,
-                             tools=(), image_paths=(), max_tokens=4096,
-                             temperature=0.0, tool_choice="auto",
-                             return_json=False):
-            route = ("vision" if image_paths else
-                     "tool_calling" if tools else "text")
-            t0 = time.time()
-            error = None
-            resp = None
-            try:
-                resp = router(messages, endpoints, model_name, api_key=api_key,
-                              tools=tools, image_paths=image_paths,
-                              max_tokens=max_tokens, temperature=temperature,
-                              tool_choice=tool_choice, return_json=return_json)
-                return resp
-            except Exception as e:
-                error = str(e)
-                raise
-            finally:
-                recorder.llm_calls.append({
-                    "route": route,
-                    "model_name": model_name,
-                    "n_messages": len(messages or []),
-                    "n_images": len(image_paths or ()),
-                    "prompt_chars": sum(len(str(m.get("content") or ""))
-                                        for m in (messages or [])),
-                    "response_chars": len(str((resp or {}).get("content") or "")),
-                    "has_tool_calls": bool((resp or {}).get("tool_calls")),
-                    "usage": None,  # DVD's return shape drops usage; never estimate
-                    "latency_seconds": time.time() - t0,
-                    "error": error,
-                })
+    install_backend() creates the router once at process start and rebinds it
+    into every DVD module, so wrapping the factory would never fire; the bound
+    function itself must be wrapped. Real token usage is read back from
+    dvd.utils.LAST_CALL_USAGE, which the OpenAI HTTP path fills per call (the
+    codex shim leaves it None)."""
+    import dvd.utils as dvd_utils
 
-        return recording_router
+    @functools.wraps(router)
+    def recording_router(messages, endpoints=None, model_name=None,
+                         api_key=None, tools=(), image_paths=(),
+                         max_tokens=4096, temperature=0.0, tool_choice="auto",
+                         return_json=False):
+        route = ("vision" if image_paths else
+                 "tool_calling" if tools else "text")
+        t0 = time.time()
+        error = None
+        resp = None
+        dvd_utils.LAST_CALL_USAGE = None  # never attribute a stale usage
+        dvd_utils.LAST_CALL_MODEL = None
+        try:
+            resp = router(messages, endpoints, model_name, api_key=api_key,
+                          tools=tools, image_paths=image_paths,
+                          max_tokens=max_tokens, temperature=temperature,
+                          tool_choice=tool_choice, return_json=return_json)
+            return resp
+        except Exception as e:
+            error = str(e)
+            raise
+        finally:
+            recorder.llm_calls.append({
+                "route": route,
+                "model_name": model_name,  # caller-requested (DVD config name)
+                "served_model": dvd_utils.LAST_CALL_MODEL,  # actually used
+                "n_messages": len(messages or []),
+                "n_images": len(image_paths or ()),
+                "prompt_chars": sum(len(str(m.get("content") or ""))
+                                    for m in (messages or [])),
+                "response_chars": len(str((resp or {}).get("content") or "")),
+                "has_tool_calls": bool((resp or {}).get("tool_calls")),
+                "usage": dvd_utils.LAST_CALL_USAGE,
+                "latency_seconds": time.time() - t0,
+                "error": error,
+            })
 
-    return factory
+    return recording_router
 
 
 def install(
     recorder: RunRecorder | None = None, *, clip_search_top_k: int | None = None,
 ) -> RunRecorder:
-    """Patch dvd_core tool names and dvd_backend.make_router. Call BEFORE
+    """Patch dvd_core tool names and every module's bound router. Call BEFORE
     run_dvd (agent binds tools at construction). Idempotent per recorder."""
+    import dvd.build_database as build_database
     import dvd.dvd_core as dvd_core
-    import dvd_backend
+    import dvd.frame_caption as frame_caption
+    import dvd.utils as dvd_utils
 
     rec = recorder or RunRecorder()
 
     orig_clip = dvd_core.clip_search_tool
     orig_browse = dvd_core.global_browse_tool
     orig_inspect = dvd_core.frame_inspect_tool
-    orig_factory = dvd_backend.make_router
+    router_modules = (dvd_core, build_database, frame_caption, dvd_utils)
+    orig_routers = {m: m.call_openai_model_with_tools for m in router_modules}
 
     if clip_search_top_k is not None and clip_search_top_k < 1:
         raise ValueError("clip_search_top_k must be positive")
@@ -281,13 +290,18 @@ def install(
         orig_clip, rec, forced_top_k=clip_search_top_k)
     dvd_core.global_browse_tool = _wrap_retrieval_tool(orig_browse, rec)
     dvd_core.frame_inspect_tool = _wrap_frame_inspect(orig_inspect, rec)
-    dvd_backend.make_router = _wrap_router_factory(orig_factory, rec)
+    # One shared wrapper around the router every module currently binds
+    # (they all point at the same object after install_backend).
+    recording = _wrap_bound_router(dvd_core.call_openai_model_with_tools, rec)
+    for mod in router_modules:
+        mod.call_openai_model_with_tools = recording
 
     def undo():
         dvd_core.clip_search_tool = orig_clip
         dvd_core.global_browse_tool = orig_browse
         dvd_core.frame_inspect_tool = orig_inspect
-        dvd_backend.make_router = orig_factory
+        for mod, orig in orig_routers.items():
+            mod.call_openai_model_with_tools = orig
 
     rec._uninstallers.append(undo)
     return rec

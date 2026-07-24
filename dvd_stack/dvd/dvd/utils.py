@@ -71,8 +71,15 @@ def local_image_to_data_url(image_path):
     # Construct the data URL
     return f"data:{mime_type};base64,{base64_encoded_data}"
 
+# Token usage and served model of the most recent model call (read by
+# instrumentation; None for backends that never expose them, e.g. the codex
+# CLI shim). The vision path in dvd_backend fills these from vLLM counters.
+LAST_CALL_USAGE = None
+LAST_CALL_MODEL = None
+
+
 @retry_with_exponential_backoff
-def call_openai_model_with_tools(  
+def call_openai_model_with_tools(
     messages,
     endpoints,
     model_name,
@@ -108,11 +115,15 @@ def call_openai_model_with_tools(
 
     model = model_name
       
-    payload = {  
+    payload = {
         "model": model,
-        "messages": copy.deepcopy(messages),  
-        # "reasoning_effort": reasoning_effort,
-    }  
+        "messages": copy.deepcopy(messages),
+    }
+    # Env-gated so other arms keep the API default; only reasoning models
+    # accept the parameter.
+    _effort = os.environ.get("SR_QA_REASONING_EFFORT")
+    if _effort and model.lower().startswith(("gpt-5", "o1", "o3", "o4")):
+        payload["reasoning_effort"] = _effort
     if return_json:
         payload["response_format"] = {"type": "json_object"}
   
@@ -135,8 +146,14 @@ def call_openai_model_with_tools(
         error_text = response.text
         raise Exception(f"OpenAI API returned status {response.status_code}: {error_text}")  
       
-    response_data = response.json()  
-    
+    response_data = response.json()
+
+    # Expose token usage for instrumentation without touching the message
+    # shape (extra keys on messages would be re-sent to the API next turn).
+    global LAST_CALL_USAGE, LAST_CALL_MODEL
+    LAST_CALL_USAGE = response_data.get('usage')
+    LAST_CALL_MODEL = response_data.get('model')
+
     # Get the message from the response
     message = response_data['choices'][0]['message']
     

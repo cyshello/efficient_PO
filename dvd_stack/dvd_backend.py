@@ -9,7 +9,9 @@ monkeypatches DVD so that:
                                                        otherwise Codex CLI shim
     * text calls WITHOUT tools (global_browse/merge)-> OpenAI API by default,
                                                        or legacy Codex CLI
-    * embeddings                                    -> local BGE (SentenceTransformer)
+    * embeddings                                    -> OpenAI text-embedding-3-large
+                                                       (SR_EMBEDDING_BACKEND=bge for
+                                                       the local BGE fallback)
 
 Nothing in DVD's agent architecture changes; only the transport is swapped by
 rebinding the names DVD imported.
@@ -59,6 +61,7 @@ def _load_openai_key() -> str | None:
 # --------------------------------------------------------------------------- #
 _EMBED_MODEL_ID = "BAAI/bge-small-en-v1.5"
 _EMBED_DIM = 384
+_EMBED_BATCH_SIZE = 128  # inputs per OpenAI embeddings request
 _embedder = None
 
 
@@ -76,8 +79,10 @@ def _serial_preprocess_captions(caption_json_path):
 
     The original forks a multiprocessing.Pool to embed captions, but the parent
     process has already initialised CUDA (vLLM/Qwen); forking after CUDA init
-    deadlocks. We embed serially on CPU (BGE) instead. Returns the same
-    (timestamp, cap_info, embedding) tuples init_single_video_db expects.
+    deadlocks. We embed serially in-process instead, through whichever
+    embedding service install_backend left active (OpenAI API or the local BGE
+    patch). Returns the same (timestamp, cap_info, embedding) tuples
+    init_single_video_db expects.
     """
     import json as _json
 
@@ -100,7 +105,15 @@ def _serial_preprocess_captions(caption_json_path):
 
     if not scripts:
         return []
-    embs = _local_get_embeddings(input_text=[s[1] for s in scripts])
+    texts = [s[1] for s in scripts]
+    embs = []
+    for start in range(0, len(texts), _EMBED_BATCH_SIZE):
+        embs.extend(utils.AzureOpenAIEmbeddingService.get_embeddings(
+            endpoints=config.AOAI_EMBEDDING_RESOURCE_LIST,
+            model_name=config.AOAI_EMBEDDING_LARGE_MODEL_NAME,
+            input_text=texts[start:start + _EMBED_BATCH_SIZE],
+            api_key=config.OPENAI_API_KEY,
+        ))
     return [(scripts[i][0], scripts[i][2], embs[i]["embedding"]) for i in range(len(scripts))]
 
 
@@ -300,9 +313,21 @@ def make_router(inference_model: str, tool_calling_model: str,
         # Vision call: clip captioning or frame_inspect -> Qwen
         if image_paths:
             prompt = messages[-1]["content"] if messages else ""
-            text = get_captioner().caption(
+            captioner = get_captioner()
+            before = captioner.usage_snapshot()
+            text = captioner.caption(
                 list(image_paths), prompt, max_tokens=max_tokens
             )
+            after = captioner.usage_snapshot()
+            # Local calls have no HTTP usage; expose vLLM's exact counts the
+            # same way utils does for OpenAI so instrumentation records both.
+            utils.LAST_CALL_USAGE = {
+                "prompt_tokens": after["prompt_tokens"] - before["prompt_tokens"],
+                "completion_tokens":
+                    after["completion_tokens"] - before["completion_tokens"],
+                "provider": "local_vllm",
+            }
+            utils.LAST_CALL_MODEL = os.path.basename(captioner.model_path)
             if return_json:  # Qwen fences JSON in ```json ... ```; unwrap the
                 # fence but let the caller's json.loads validate + retry.
                 text = _strip_fences(text)
@@ -363,7 +388,6 @@ def install_backend(inference_model: str = "gpt-5.5", tool_vlm_max_frames: int =
     """
     global _tensor_parallel
     _tensor_parallel = tensor_parallel_size
-    config.AOAI_EMBEDDING_LARGE_DIM = _EMBED_DIM
     config.AOAI_TOOL_VLM_MAX_FRAME_NUM = tool_vlm_max_frames
 
     key = (openai_api_key or _load_openai_key()) if use_openai_tools else None
@@ -375,8 +399,24 @@ def install_backend(inference_model: str = "gpt-5.5", tool_vlm_max_frames: int =
     build_database.call_openai_model_with_tools = router
     frame_caption.call_openai_model_with_tools = router
 
-    # Local embeddings (class is shared by reference across imports).
-    utils.AzureOpenAIEmbeddingService.get_embeddings = staticmethod(_local_get_embeddings)
+    # Embeddings: OpenAI text-embedding-3-large (DVD's canonical service, dim
+    # 3072 from dvd.config) or the local BGE patch (SR_EMBEDDING_BACKEND=bge).
+    embedding_backend = os.environ.get("SR_EMBEDDING_BACKEND", "openai")
+    if embedding_backend == "bge":
+        config.AOAI_EMBEDDING_LARGE_DIM = _EMBED_DIM
+        utils.AzureOpenAIEmbeddingService.get_embeddings = staticmethod(
+            _local_get_embeddings)
+    elif embedding_backend == "openai":
+        # build_database's embedding calls pass api_key=config.OPENAI_API_KEY,
+        # which routes to api.openai.com; make sure it is populated.
+        config.OPENAI_API_KEY = config.OPENAI_API_KEY or text_key
+        if not config.OPENAI_API_KEY:
+            raise RuntimeError(
+                "SR_EMBEDDING_BACKEND=openai requires OPENAI_API_KEY or .env")
+    else:
+        raise ValueError(
+            f"SR_EMBEDDING_BACKEND must be 'openai' or 'bge', "
+            f"got {embedding_backend!r}")
     # Serial embedding at DB-build time (avoid fork-after-CUDA deadlock).
     build_database.preprocess_captions = _serial_preprocess_captions
 

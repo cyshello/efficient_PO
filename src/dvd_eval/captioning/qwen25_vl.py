@@ -21,6 +21,11 @@ from .base import (
 )
 
 _MODEL_ID = os.environ.get("SR_CAPTION_MODEL_ID", "Qwen/Qwen2.5-VL-7B-Instruct")
+# Reasoning-tuned Qwen models (Qwen3.5+) emit a <think> block before the
+# answer by default; captions must be the answer only. The chat template
+# honors enable_thinking=False (older templates simply ignore the variable).
+_ENABLE_THINKING = os.environ.get(
+    "SR_CAPTION_ENABLE_THINKING", "0") not in ("0", "false", "False", "")
 VLLM_MM_CACHE_POLICY_VERSION = "qwen25_vl_mm_cache_disabled_v1"
 VLLM_MM_PROCESSOR_CACHE_GB = 0.0
 VLLM_PREFIX_CACHING_ENABLED = False
@@ -61,6 +66,12 @@ class Qwen25VLCaptioner(BaseCaptioner):
         self.image_max_pixels = image_max_pixels
         self.mm_processor_cache_gb = float(mm_processor_cache_gb)
         self.enable_prefix_caching = bool(enable_prefix_caching)
+
+        # Cumulative local-inference token counters (vLLM exposes exact
+        # counts per request); read via usage_snapshot() deltas.
+        self.total_requests = 0
+        self.total_prompt_tokens = 0
+        self.total_completion_tokens = 0
 
         self.processor = AutoProcessor.from_pretrained(self.model_path)
         self.llm = LLM(
@@ -109,6 +120,7 @@ class Qwen25VLCaptioner(BaseCaptioner):
             messages,
             tokenize=False,
             add_generation_prompt=True,
+            enable_thinking=_ENABLE_THINKING,
         )
         image_inputs, video_inputs = process_vision_info(messages)
         if video_inputs:
@@ -174,4 +186,16 @@ class Qwen25VLCaptioner(BaseCaptioner):
                 json_schema=json_schema,
             ),
         )
+        for output in outputs:
+            self.total_requests += 1
+            self.total_prompt_tokens += len(output.prompt_token_ids or ())
+            self.total_completion_tokens += len(output.outputs[0].token_ids or ())
         return [output.outputs[0].text.strip() for output in outputs]
+
+    def usage_snapshot(self) -> dict[str, int]:
+        """Cumulative local token counts; subtract two snapshots for a delta."""
+        return {
+            "requests": self.total_requests,
+            "prompt_tokens": self.total_prompt_tokens,
+            "completion_tokens": self.total_completion_tokens,
+        }

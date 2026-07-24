@@ -25,7 +25,7 @@ AOAI_EMBEDDING_LARGE_DIM = 3072
 
 # ------------------ agent and tool setting ------------------ #
 LITE_MODE = True # if True, only leverage srt subtitle, no pixel downloaded or pixel captioning
-GLOBAL_BROWSE_TOPK = 100
+GLOBAL_BROWSE_TOPK = 300
 OVERWRITE_CLIP_SEARCH_TOPK = 0 # 0 means no overwrite and let agent decide
 
 SINGLE_CHOICE_QA = True  # Design for benchmark test. If True, the agent will only return options for single-choice questions.

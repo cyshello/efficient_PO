@@ -22,10 +22,37 @@ from typing import Callable
 from dvd_eval.cache.caption_cache import assert_writable, captions_content_hash
 
 
+# One merge request must stay well under the model's 128k context. Long
+# videos (700+ clips) produced 228k-token merge prompts (measured 2026-07-23,
+# LVBench uusf1qG_uZ4), so oversized registry lists are merged hierarchically:
+# registries are packed into chunks by serialized size (~40k tokens at ~4
+# chars/token), each chunk is merged, then the chunk results are merged.
+MERGE_CHUNK_MAX_CHARS = 160_000
+
+
+def _merge_chunks(registries: list) -> list[list]:
+    chunks: list[list] = [[]]
+    used = 0
+    for registry in registries:
+        size = len(json.dumps(registry))
+        if chunks[-1] and used + size > MERGE_CHUNK_MAX_CHARS:
+            chunks.append([])
+            used = 0
+        chunks[-1].append(registry)
+        used += size
+    return chunks
+
+
 def default_merge_fn(partial_registries: list) -> dict | list | None:
     from dvd.frame_caption import merge_subject_registries
 
-    return merge_subject_registries(partial_registries)
+    registries = list(partial_registries or [])
+    while True:
+        chunks = _merge_chunks(registries)
+        if len(chunks) == 1:
+            return merge_subject_registries(chunks[0])
+        registries = [r for r in
+                      (merge_subject_registries(c) for c in chunks) if r]
 
 
 def caption_entry_from_parsed(parsed: dict) -> dict | None:

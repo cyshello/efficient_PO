@@ -60,7 +60,8 @@ PREVIOUSLY_CACHED_VIDEOS = (
 # ------------------------------ models ------------------------------------ #
 CAPTION_MODEL_ID = os.environ.get(
     "SR_CAPTION_MODEL_ID", "Qwen/Qwen2.5-VL-7B-Instruct")
-ORCHESTRATOR_TOOL_MODEL = "gpt-4o-mini"
+ORCHESTRATOR_TOOL_MODEL = os.environ.get(
+    "SR_ORCHESTRATOR_TOOL_MODEL", "gpt-4o")
 TEXT_FALLBACK_MODEL = "gpt-5.5"  # codex CLI
 FEEDBACK_MODEL = os.environ.get("SR_FEEDBACK_MODEL", "gpt-4o")
 
